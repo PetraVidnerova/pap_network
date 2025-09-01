@@ -1,8 +1,24 @@
+import os
+import shutil
 import tqdm 
 import gzip
 import json
 
 import pandas as pd 
+
+BASEDIR = "/opt/backup/OpenAlex/openalex-snapshot/data/works"
+OUTPUTDIR ="/opt/backup/OpenAlex/"
+
+def get_list_of_filenames():
+    """ Return a list of all filenames in the BASEDIR. """
+    filenames = []
+    for root, _, files in os.walk(BASEDIR):
+        for filename in files:
+            if filename.endswith(".gz"):
+                filenames.append(os.path.join(root, filename))
+    return filenames
+
+
 
 def get_set_of_IDs():
     """ return set of relevant IDs """
@@ -40,26 +56,31 @@ def extract_citations(wanted_ids, filename, citations=None):
                     if cited_id not in citations:
                         citations[cited_id] = []
                     citations[cited_id].append(id)
-                    print("Added citation from:", id, "to:", cited_id)
+                    #print("Added citation from:", id, "to:", cited_id)
 
-            else:
-                print("No cited IDs found for:", id)
-    return citations 
+        return citations 
 
 
 
 if __name__ == "__main__":
 
+    filenames = get_list_of_filenames()
+    
     wanted_ids = get_set_of_IDs()
     print("Number of all papers:", len(wanted_ids))
 
-
-    FILENAME=r"/opt/backup/OpenAlex/openalex-snapshot/data/works/updated_date=2025-05-17/part_001.gz"
-    filenames = [FILENAME]
-
-    citations = dict() 
-    for filename in filenames:
-        citations = extract_citations(wanted_ids, filename, citations=citations)
+    #FILENAME=r"/opt/backup/OpenAlex/openalex-snapshot/data/works/updated_date=2025-05-17/part_001.gz"
     
-    with open("citations.json", "w") as f:
-        json.dump(citations, f)
+    citations = dict() 
+    for filename in tqdm.tqdm(filenames):
+        citations = extract_citations(wanted_ids, filename, citations=citations)
+           
+        citation_file = os.path.join(OUTPUTDIR, "citations.json")
+
+        if os.path.exists(citation_file):
+            shutil.move(citation_file, citation_file + ".bak")
+        with open(citation_file, "w") as f:
+            json.dump(citations, f)
+
+        with open(os.path.join(OUTPUTDIR, "processed_files.txt"), "a") as f:
+            print(filename, file=f)
