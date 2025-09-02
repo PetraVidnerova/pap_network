@@ -35,6 +35,18 @@ def get_set_of_IDs():
             ids.update(references.split(";"))
     return ids
 
+def get_set_of_IDs_v2():
+    FILENAME = "../map_novelty_pap_alex/references.txt"
+    ids = set()
+    with open(FILENAME, "r") as f:
+        first = True
+        for line in f:
+            if first:
+                first = False
+                continue
+            scopus_id, alex_id_list = line.split(", ")
+            ids.update(alex_id_list.strip().split(";"))
+    return ids
 
 def extract_citations(wanted_ids, filename, citations=None):
     """ For each ID from wanted_ids find set of citations. Returns dictionary. """
@@ -60,19 +72,25 @@ def extract_citations(wanted_ids, filename, citations=None):
         return citations 
 
 
-def collect_citations():
+def collect_citations(v=None):
     filenames = get_list_of_filenames()
 
-    wanted_ids = get_set_of_IDs()
-    print("Number of all papers:", len(wanted_ids))
+    if v is None:
+        wanted_ids = get_set_of_IDs()
+    else:
+        wanted_ids = get_set_of_IDs()
+        wanted_ids.update(get_set_of_IDs_v2())
 
+    print("Number of all papers:", len(wanted_ids))
+    
     #FILENAME=r"/opt/backup/OpenAlex/openalex-snapshot/data/works/updated_date=2025-05-17/part_001.gz"
 
     citations = dict() 
     for filename in tqdm.tqdm(filenames):
         citations = extract_citations(wanted_ids, filename, citations=citations)
 
-        citation_file = os.path.join(OUTPUTDIR, "citations.json")
+        ver = "" if v is None else f"_{v}"    
+        citation_file = os.path.join(OUTPUTDIR, f"citations{ver}.json")
 
         if os.path.exists(citation_file):
             shutil.move(citation_file, citation_file + ".bak")
@@ -140,7 +158,7 @@ def calculate_DI():
         cits = citations[scopus_id] 
 
 if __name__ == "__main__":
-    collect_citations()
+    collect_citations(v=2)
     # process_citations()
     # convert_references()  
     # calculate_DI()
