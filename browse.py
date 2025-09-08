@@ -1,10 +1,10 @@
 import os
 import shutil
-import tqdm 
+import tqdm
 import gzip
 import json
 
-import pandas as pd 
+import pandas as pd
 
 BASEDIR = "/opt/backup/OpenAlex/openalex-snapshot/data/works"
 OUTPUTDIR ="/opt/backup/OpenAlex/"
@@ -61,7 +61,6 @@ def extract_citations(wanted_ids, filename, citations=None):
             references = rec["referenced_works"]
 
             cited_ids = wanted_ids.intersection(set(references))
-
             if cited_ids:
                 for cited_id in cited_ids:
                     if cited_id not in citations:
@@ -140,25 +139,128 @@ def convert_references():
         json.dump(references, f)
     print("Done.")
 
-def calculate_DI():
-    references_filename = os.path.join(OUTPUTDIR,"scopus_to_alex_references.json")
-    citations_filename = os.path.join(OUTPUTDIR,"scopus_to_alex_citations.json")
+def collect_references():
+    """
+    Returns set of references of focused papers. 
+    ( * we only need references of the focused papers
+      * references of references not needed
+      * references of citing papers not needed since
+     we have citations of references of focused papers)
+    """
+    wanted_ids = get_set_of_IDs()
 
+    references = dict()
+    filenames = get_list_of_filenames()
+    for filename in tqdm.tqdm(filenames):
+        with gzip.open(filename, "rt", encoding="utf-8") as f:
+            for line in f:
+                rec = json.loads(line)
+                id = rec["id"]
+                if id in wanted_ids:
+                    if id not in references:
+                        references[id] = rec["referenced_works"]
+                    else:
+                        print("Duplicate ID:", id)
+                        raise ValueError("Duplicate ID")
+
+    with open(os.path.join(OUTPUTDIR, "references.json"), "w") as f:
+        json.dump(references, f)
+    print("Done.")
+
+def calculate_DI():
+    citation_filename = os.path.join(OUTPUTDIR, "citations_2.json")
+    references_filename = os.path.join(OUTPUTDIR, "references.json")
+    
+    print("Loading citations...")
+    with open(citation_filename, "r") as f:
+        citations = json.load(f)
+    print("Done.")
+    
+    print("Loading references...")
     with open(references_filename, "r") as f:
         references = json.load(f)
+    print("Done.")
 
-    with open(citations_filename, "r") as f:
+    
+    DI_values = dict()
+    # go through references keys,those are the focused papers
+    for paper_id in tqdm.tqdm(references.keys()):
+        citing_papers = citations.get(paper_id, [])
+        referenced_papers = references[paper_id] # all focused papers should be in references
+        citing_of_references = set()
+        for ref_id in referenced_papers:
+            citing_of_references.update(
+                citations.get(ref_id, set())
+            )
+        # P_i = citing p but not its references  
+        P_i = set(citing_papers).difference(citing_of_references)
+        # P_j = citing p and its references
+        P_j = set(citing_papers).intersection(citing_of_references)
+        # P_k = citing references of p but not p
+        P_k =  citing_of_references.difference(citing_papers)
+
+        n_i = len(P_i)
+        n_j = len(P_j)
+        n_k = len(P_k)
+
+        
+        di = (n_i - n_j)
+        if di != 0:
+            di /= (n_i + n_j + n_k)
+        DI_values[paper_id] = di
+        
+    print("DI calcuation finished.")
+    with open("DI_values.json", "w") as f:
+        json.dump(DI_values, f)
+    print("DI_values.json saved.")
+
+def create_set_of_all_involved_papers():
+    citation_filename = os.path.join(OUTPUTDIR, "citations_2.json")
+    references_filename = os.path.join(OUTPUTDIR, "references.json")
+    
+    print("Loading citations...")
+    with open(citation_filename, "r") as f:
         citations = json.load(f)
+    print("Done.")
+    
+    print("Loading references...")
+    with open(references_filename, "r") as f:
+        references = json.load(f)
+    print("Done.")
 
-    ids = list(references.keys())
+    all_papers = set()
+    all_papers.update(references.keys())
 
-    id2DI = dict()
-    for scopus_id in ids:
-        refs = references[scopus_id]
-        cits = citations[scopus_id] 
+
+    for paper_id in tqdm.tqdm(references.keys()):
+        # add citations 
+        citing_papers = citations.get(paper_id, [])
+        all_papers.update(citing_papers)
+        # add references
+        referenced_papers = references[paper_id] 
+        all_papers.update(referenced_papers)
+        # add citations of references
+        citing_of_references = set()
+        for ref_id in referenced_papers:
+            citing_of_references.update(
+                citations.get(ref_id, set())
+            )
+        all_papers.update(citing_of_references) 
+
+    print("Total number of involved papers:", len(all_papers))
+    with open("all_involved_papers.txt", "w") as f:
+        for paper_id in all_papers:
+            print(paper_id, file=f)
+    print("all_involved_papers.txt saved.")
+    
+def find_year_for_papers():
+    ...
+
 
 if __name__ == "__main__":
-    collect_citations(v=2)
-    # process_citations()
-    # convert_references()  
+    # collect_citations(v=2)
+    ## process_citations()
+    ## convert_references()  
+    #collect_references()
     # calculate_DI()
+    #create_set_of_all_involved_papers()
